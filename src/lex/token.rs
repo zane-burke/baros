@@ -1,3 +1,5 @@
+/// Defines Tokens
+
 use ecow::EcoString;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -32,6 +34,7 @@ pub enum Token {
     Async,    // async
     Await,    // await
     Const,    // const
+    Default,  // default
     Do,       // do
     Dynamic,  // dyn
     Enum,     // enum
@@ -171,6 +174,7 @@ pub enum Token {
 }
 
 impl Token {
+    /// Determines if the given Token has a reserved keyword
     pub fn is_reserved(&self) -> bool {
         match self {
             Token::Alias
@@ -180,6 +184,7 @@ impl Token {
             | Token::Const
             | Token::Do
             | Token::Dynamic
+            | Token::Default
             | Token::Enum
             | Token::Except
             | Token::Function
