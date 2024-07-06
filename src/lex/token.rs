@@ -14,19 +14,10 @@ pub enum Token {
     Comment,
 
     // Types
-    I8 { value: EcoString },
-    I16 { value: EcoString },
-    I32 { value: EcoString },
-    I64 { value: EcoString },
-    I128 { value: EcoString },
-    U8 { value: EcoString },
-    U16 { value: EcoString },
-    U32 { value: EcoString },
-    U64 { value: EcoString },
-    U128 { value: EcoString },
-    F32 { value: EcoString },
-    F64 { value: EcoString },
-    String { value: EcoString },
+    Int { value: EcoString },   // Integer literals
+    Float { value: EcoString }, // Float literals
+    Str { value: EcoString },   // String literals
+    Bool { value: EcoString },  // Boolean literals
 
     // Keywords
     Alias,    // alias
@@ -43,7 +34,7 @@ pub enum Token {
     Impl,     // impl
     Import,   // import
     Let,      // let
-    Mut,      // Reserved
+    Mut,      // mut
     Pub,      // pub
     Return,   // return
     Self_,    // self
@@ -57,6 +48,7 @@ pub enum Token {
     Union,    // union
     Use,      // use
     Var,      // var
+    Where,    // where
 
     // Control Flow
     If,    // if
@@ -71,10 +63,6 @@ pub enum Token {
     Continue, // continue
     Break,    // break
     In,       // in
-
-    // Boolean
-    True,  // true
-    False, // false
 
     // Binary Operators
     Plus,          // +
@@ -175,7 +163,7 @@ pub enum Token {
 
 impl Token {
     /// Determines if the given Token has a reserved keyword
-    pub fn is_reserved(&self) -> bool {
+    pub fn is_reserved_ident(&self) -> bool {
         match self {
             Token::Alias
             | Token::As
@@ -205,6 +193,7 @@ impl Token {
             | Token::Union
             | Token::Use
             | Token::Var
+            | Token::Where
             | Token::If
             | Token::Elif
             | Token::Else
@@ -214,9 +203,7 @@ impl Token {
             | Token::While
             | Token::Continue
             | Token::Break
-            | Token::In
-            | Token::True
-            | Token::False => true,
+            | Token::In => true,
 
             _ => false,
         }
@@ -232,19 +219,10 @@ impl std::fmt::Display for Token {
             Token::Identifier { name } => name.as_str(),
             Token::DocComment { .. } => "///",
             Token::Comment => "//",
-            Token::I8 { value }
-            | Token::I16 { value }
-            | Token::I32 { value }
-            | Token::I64 { value }
-            | Token::I128 { value }
-            | Token::U8 { value }
-            | Token::U16 { value }
-            | Token::U32 { value }
-            | Token::U64 { value }
-            | Token::U128 { value }
-            | Token::F32 { value }
-            | Token::F64 { value }
-            | Token::String { value } => value.as_str(),
+            Token::Int { value }
+            | Token::Float { value }
+            | Token::Str { value }
+            | Token::Bool { value } => value.as_str(),
             Token::Alias => "alias",
             Token::As => "as",
             Token::Async => "async",
@@ -273,6 +251,7 @@ impl std::fmt::Display for Token {
             Token::Union => "union",
             Token::Use => "use",
             Token::Var => "var",
+            Token::Where => "where",
             Token::If => "if",
             Token::Elif => "elif",
             Token::Else => "else",
@@ -283,8 +262,6 @@ impl std::fmt::Display for Token {
             Token::Continue => "continue",
             Token::Break => "break",
             Token::In => "in",
-            Token::True => "true",
-            Token::False => "false",
             Token::Plus => "+",
             Token::Minus => "-",
             Token::Star => "*",
