@@ -7,10 +7,25 @@ pub struct LexError {
     pub location: Span,
 }
 
+impl LexError {
+    pub fn new(err_type: LexErrorType, location: Span) -> Self {
+        LexError {
+            error: err_type,
+            location,
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Default, Clone, Copy)]
 pub struct Span {
-    pub start: u32,
-    pub end: u32,
+    start: u32,
+    end: u32,
+}
+
+impl Span {
+    pub fn new(start: u32, end: u32) -> Self {
+        Span { start, end }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -21,6 +36,6 @@ pub enum LexErrorType {
     NoIntValue,
     UnterminatedString,
     UnrecognizedToken { tok: char },
+    DisallowedToken { tok: char },
     BadIdentifier { name: EcoString },
-} 
-
+}
