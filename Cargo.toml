@@ -2,3 +2,6 @@
 name = "baros"
 version = "0.0.1"
 edition = "2021"
+
+[dependencies]
+ecow = "0.2.2"
