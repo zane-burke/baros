@@ -48,6 +48,7 @@ pub enum Token {
     Union,    // union
     Use,      // use
     Var,      // var
+    When,     // when
     Where,    // where
 
     // Control Flow
@@ -74,6 +75,7 @@ pub enum Token {
     DoubleSlash,   // //
     DoublePercent, // %%
     TripleSlash,   // ///
+    LessGreater,   // <>
 
     // Logical Operators
     Equality,   // ==
@@ -86,8 +88,8 @@ pub enum Token {
     Amp,        // &
     Bar,        // |
     Caret,      // ^
-    ShiftRight, // >>
     ShiftLeft,  // <<
+    ShiftRight, // >>
 
     // Assignment Operators
     Eq,              // =
@@ -98,17 +100,16 @@ pub enum Token {
     PercentEq,       // %=
     DoublePercentEq, // %%=
     AmpEq,           // &=
-    PipeEq,          // |=
+    BarEq,           // |=
     CaretEq,         // ^=
     ShiftRightEq,    // >>=
     ShiftLeftEq,     // <<=
 
     // Ranges
-    UnincRange, // ...
-    IncRange,   // =.=
-    RightRange, // .=
-    LeftRange,  // =..
-    DoubleDot,  // ..
+    Range,      // .. <-> (a, b)
+    IncRange,   // =.= <-> [a, b]
+    RightRange, // ..= <-> (a, b]
+    LeftRange,  // =.. <-> [a, b)
 
     // Punctuation
     Comma,       // ,
@@ -118,6 +119,7 @@ pub enum Token {
     DoubleColon, // ::
     RightArrow,  // ->
     LeftArrow,   // <-
+    Exclam,      // !
     Question,    // ?
     Hash,        // #
     Dollar,      // $
@@ -135,30 +137,19 @@ pub enum Token {
     LeftParen,    // (
     RightParen,   // )
 
-    // Reserved Operators (Unused but still parsed as language tokens)
-    LessColon,                // <:
-    GreaterColon,             // >:
-    ColonGreater,             // :>
-    ColonLess,                // :<
-    LongRightArrow,           // -->
-    LongLeftArrow,            // <--
-    DoubleRightArrow,         // ->>
-    DoubleLeftArrow,          // <<-
-    BarredRightArrow,         // |->
-    BarredLeftArrow,          // <-|
-    CurlyRightArrow,          // ~>
-    CurlyLeftArrow,           // <~
-    DivotedRightArrow,        // >->
-    DivotedLeftArrow,         // <-<
-    BidirectionalArrow,       // <->
-    InvertedRightArrow,       // -<
-    InvertedLeftArrow,        // >-
-    InvertedDoubleRightArrow, // -<<
-    InvertedDoubleLeftArrow,  // >>-
-    LongCurlyRightArrow,      // ~~>
-    LongCurlyLeftArrow,       // <~~
-    RightPipe,                // |>
-    LeftPipe,                 // <|
+    // Reserved Operators (Unused but still parsed)
+    LessColon,          // <:
+    ColonGreater,       // :>
+    FatArrow,           // =>
+    LongRightArrow,     // -->
+    LongLeftArrow,      // <--
+    CurlyRightArrow,    // ~>
+    CurlyLeftArrow,     // <~
+    BidirectionalArrow, // <->
+    InvertedRightArrow, // -<
+    InvertedLeftArrow,  // >-
+    RightPipe,          // |>
+    LeftPipe,           // <|
 }
 
 impl Token {
@@ -193,6 +184,7 @@ impl Token {
             | Token::Union
             | Token::Use
             | Token::Var
+            | Token::When
             | Token::Where
             | Token::If
             | Token::Elif
@@ -251,6 +243,7 @@ impl std::fmt::Display for Token {
             Token::Union => "union",
             Token::Use => "use",
             Token::Var => "var",
+            Token::When => "when",
             Token::Where => "where",
             Token::If => "if",
             Token::Elif => "elif",
@@ -271,6 +264,7 @@ impl std::fmt::Display for Token {
             Token::DoubleSlash => "//",
             Token::DoublePercent => "%%",
             Token::TripleSlash => "///",
+            Token::LessGreater => "<>",
             Token::Equality => "==",
             Token::Inequality => "!=",
             Token::Identity => "===",
@@ -291,15 +285,14 @@ impl std::fmt::Display for Token {
             Token::PercentEq => "%=",
             Token::DoublePercentEq => "%%=",
             Token::AmpEq => "&=",
-            Token::PipeEq => "|=",
+            Token::BarEq => "|=",
             Token::CaretEq => "^=",
             Token::ShiftRightEq => ">>=",
             Token::ShiftLeftEq => "<<=",
-            Token::UnincRange => "...",
+            Token::Range => "..",
             Token::IncRange => "=.=",
             Token::RightRange => "..=",
             Token::LeftRange => "=..",
-            Token::DoubleDot => "..",
             Token::Comma => ",",
             Token::Dot => ".",
             Token::Colon => ":",
@@ -307,6 +300,7 @@ impl std::fmt::Display for Token {
             Token::DoubleColon => "::",
             Token::RightArrow => "->",
             Token::LeftArrow => "<-",
+            Token::Exclam => "!",
             Token::Question => "?",
             Token::Hash => "#",
             Token::Dollar => "$",
@@ -322,26 +316,15 @@ impl std::fmt::Display for Token {
             Token::LeftParen => "(",
             Token::RightParen => ")",
             Token::LessColon => "<:",
-            Token::GreaterColon => ">:",
             Token::ColonGreater => ":>",
-            Token::ColonLess => ":<",
+            Token::FatArrow => "=>",
             Token::LongRightArrow => "-->",
             Token::LongLeftArrow => "<--",
-            Token::DoubleRightArrow => "->>",
-            Token::DoubleLeftArrow => "<<-",
-            Token::BarredRightArrow => "|->",
-            Token::BarredLeftArrow => "<-|",
             Token::CurlyRightArrow => "~>",
             Token::CurlyLeftArrow => "<~",
-            Token::DivotedRightArrow => ">->",
-            Token::DivotedLeftArrow => "<-<",
             Token::BidirectionalArrow => "<->",
             Token::InvertedRightArrow => "-<",
             Token::InvertedLeftArrow => ">-",
-            Token::InvertedDoubleRightArrow => "-<<",
-            Token::InvertedDoubleLeftArrow => ">>-",
-            Token::LongCurlyRightArrow => "~~>",
-            Token::LongCurlyLeftArrow => "<~~",
             Token::RightPipe => "|>",
             Token::LeftPipe => "<|",
         };
