@@ -1,4 +1,4 @@
-use crate::lex::lexer;
-use crate::lex::token;
+use baros::lex::lexer;
+use baros::lex::token;
 
 fn main() {}
