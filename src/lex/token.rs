@@ -1,4 +1,4 @@
-/// Defines Tokens
+//! Defines Tokens
 
 use ecow::EcoString;
 
@@ -250,6 +250,7 @@ impl std::fmt::Display for Token {
             Token::Async => "async",
             Token::Await => "await",
             Token::Const => "const",
+            Token::Default => "default",
             Token::Do => "do",
             Token::Dynamic => "dyn",
             Token::Enum => "enum",
