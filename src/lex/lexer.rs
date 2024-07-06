@@ -1,119 +1,74 @@
-use crate::lex::token;
+//! The lexer for Baros
+use crate::lex::error::LexError;
+use crate::lex::token::Token;
 
-#[derive(Default)]
-pub struct Lexer {
-    input: String,
-    current: usize,
-    next: usize,
-    character: char,
+/// Lexer
+#[derive(Debug)]
+pub struct Lexer<T: Iterator<Item = (u32, char)>> {
+    characters: T,
+    pending: Vec<SpannedToken>,
+    current_char: Option<char>,
+    next_char: Option<char>,
+    current_loc: u32,
+    next_loc: u32,
+    location: u32,
 }
 
-impl Lexer {
-    pub fn new(inp: String) -> Self {
-        Lexer {
-            input: inp.clone(),
-            current: 0,
-            next: 1,
-            character: inp.chars().nth(0).unwrap(),
-        }
+/// Pairs a Token with its start and end position
+#[derive(Debug)]
+pub struct SpannedToken {
+    tok: Token, 
+    start: u32,
+    end: u32,
+}
+
+pub type LexResult = Result<SpannedToken, LexError>;
+
+/// Collapses \r\n and \n into just \n
+#[derive(Debug)]
+pub struct NewlineHandler<T: Iterator<Item = (u32, char)>> {
+    source: T,
+    current_char: Option<(u32, char)>,
+    next_char: Option<(u32, char)>,
+}
+
+impl<T> NewlineHandler<T>
+where
+    T: Iterator<Item = (u32, char)>,
+{
+    pub fn new(src: T) -> Self {
+        let mut handler = NewlineHandler {
+            source: src,
+            current_char: None,
+            next_char: None,
+        };
+        let _ = handler.next();
+        let _ = handler.next();
+        handler
     }
 
-    /// Moves the lexer to the next character to be parsed
-    pub fn next_char(&mut self) {
-        // This only supports ASCII characters.
-        // Switch to unicode-segmentation crate for unicode support.
-        if self.next >= self.input.len() {
-            self.character = '\0';
-        } else {
-            self.character = self.input.chars().nth(self.next).unwrap();
-        }
-
-        self.current = self.next;
-        self.next += 1;
-    }
-
-    /// Allows the lexer to peek at the next character
-    pub fn peek(&mut self) -> char {
-        if self.next >= self.input.len() {
-            return '\0';
-        }
-
-        self.input.chars().nth(self.next).unwrap()
-    }
-
-    /// Tokenizes the current character
-    pub fn next_token(&mut self) -> token::Token {
-        use token::{Token, TokenType};
-
-        let tok: Token;
-        self.skip_whitespace();
-
-        match self.character {
-            '=' => {
-                tok = Token::new(TokenType::Eq, "=".to_string());
-            }
-            '+' => {
-                tok = Token::new(TokenType::Plus, "+".to_string());
-            }
-            ';' => {
-                tok = Token::new(TokenType::SemiColon, ";".to_string());
-            }
-            ',' => {
-                tok = Token::new(TokenType::Comma, ",".to_string());
-            }
-            '(' => {
-                tok = Token::new(TokenType::LeftParen, "(".to_string());
-            }
-            ')' => {
-                tok = Token::new(TokenType::RightParen, ")".to_string());
-            }
-            '{' => {
-                tok = Token::new(TokenType::LeftBrace, "{".to_string());
-            }
-            '}' => {
-                tok = Token::new(TokenType::RightBrace, "}".to_string());
-            }
-            '\0' => {
-                tok = Token::new(TokenType::EOF, "".to_string());
-            }
-            _ => {
-                if is_valid_character(self.character) {
-                    let literal = self.read_identifier();
-                    tok = Token::new(token::lookup(literal.clone()), literal);
-                } else {
-                    tok = Token::new(TokenType::Undefined, "UNDEFINED".to_string());
-                }
-            }
-        }
-
-        self.next_char();
-        tok
-    }
-
-    pub fn read_identifier(&mut self) -> String {
-        let pos = self.current;
-        while is_valid_character(self.character) {
-            self.next_char();
-        }
-
-        self.input[pos..(self.current)].to_string()
-    }
-
-    pub fn skip_whitespace(&mut self) {
-        while self.character == ' ' || self.character == '_' || self.character == '\t' || self.character == '\r' {
-            self.next_char();
-        }
-    }
-
-    pub fn handle_newline() {
-        todo!();
+    /// Makes the handler continue to the next two characters
+    pub fn advance(&mut self) -> Option<(u32, char)> {
+        let res = self.current_char;
+        self.current_char = self.next_char;
+        self.next_char = self.source.next();
+        res
     }
 }
 
-pub fn is_valid_character(character: char) -> bool {
-    if character.is_alphabetic() || character == '_' {
-        return true;
-    }
+impl<T> Iterator for NewlineHandler<T> where T: Iterator<Item = (u32, char)> {
+    type Item = (u32, char);
+    /// Collapses `\r\n` (Windows), `\r` (Mac), and `\n` (Linux) into `\n` then continues along to the next characters
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some((i, '\r')) = self.current_char {
+            if let Some((_, '\n')) = self.next_char {
+                let _ = self.advance();
+                self.current_char = Some((i, '\n'))
+            } else {
+                self.current_char = Some((i, '\n'))
+            }
+        }
 
-    false
+        self.advance()
+    }
 }
