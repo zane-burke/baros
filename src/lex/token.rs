@@ -178,22 +178,16 @@ impl Token {
             | Token::Async
             | Token::Await
             | Token::Const
-            | Token::Deref
             | Token::Do
             | Token::Dynamic
             | Token::Enum
             | Token::Except
-            | Token::Extern
             | Token::Function
             | Token::Impl
             | Token::Import
-            | Token::Include
             | Token::Let
-            | Token::Move
             | Token::Mut
             | Token::Pub
-            | Token::Priv
-            | Token::Ref
             | Token::Return
             | Token::Self_
             | Token::Static
