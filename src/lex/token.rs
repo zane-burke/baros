@@ -10,8 +10,9 @@ pub enum Token {
     Undefined,
 
     Identifier { name: EcoString },
-    DocComment { value: String },
     Comment,
+    DocComment { value: String },
+    ModComment { value: String },
 
     // Types
     Int { value: EcoString },   // Integer literals
@@ -66,16 +67,17 @@ pub enum Token {
     In,       // in
 
     // Binary Operators
-    Plus,          // +
-    Minus,         // -
-    Star,          // *
-    Slash,         // /
-    Percent,       // %
-    DoubleStar,    // **
-    DoubleSlash,   // //
-    DoublePercent, // %%
-    TripleSlash,   // ///
-    LessGreater,   // <>
+    Plus,              // +
+    Minus,             // -
+    Star,              // *
+    Slash,             // /
+    Percent,           // %
+    DoubleStar,        // **
+    DoubleSlash,       // //
+    DoublePercent,     // %%
+    TripleSlash,       // ///
+    DoubleSlashExclam, // //!
+    LessGreater,       // <>
 
     // Logical Operators
     Equality,   // ==
@@ -161,9 +163,9 @@ impl Token {
             | Token::Async
             | Token::Await
             | Token::Const
+            | Token::Default
             | Token::Do
             | Token::Dynamic
-            | Token::Default
             | Token::Enum
             | Token::Except
             | Token::Function
@@ -209,8 +211,9 @@ impl std::fmt::Display for Token {
             Token::Newline => "NEWLINE",
             Token::Undefined => "UNDEFINED",
             Token::Identifier { name } => name.as_str(),
-            Token::DocComment { .. } => "///",
             Token::Comment => "//",
+            Token::DocComment { .. } => "///",
+            Token::ModComment { .. } => "//!",
             Token::Int { value }
             | Token::Float { value }
             | Token::Str { value }
@@ -264,6 +267,7 @@ impl std::fmt::Display for Token {
             Token::DoubleSlash => "//",
             Token::DoublePercent => "%%",
             Token::TripleSlash => "///",
+            Token::DoubleSlashExclam => "//!",
             Token::LessGreater => "<>",
             Token::Equality => "==",
             Token::Inequality => "!=",
