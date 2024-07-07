@@ -1,9 +1,11 @@
 //! The lexer for Baros
+//! Needs to be extended to include support for various type suffixes (e.g. 100u8, -12i64, etc.)
+//! Current Radix enum may not be ideal for handling errors when unsupported radices are used.
 use crate::lex::error::{LexError, LexErrorType, Span};
 use crate::lex::token::Token;
 
 /// Stores variants for the allowed radices in the language
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum Radix {
     /// Hexadecimal variant
     Hex,
@@ -13,6 +15,30 @@ pub enum Radix {
     Oct,
     /// Binary variant
     Bin,
+    // Catch-all variant for unsupported radices
+    Radix(u32),
+}
+
+impl Radix {
+    pub fn as_num(&self) -> u32 {
+        match self {
+            Radix::Hex => 16,
+            Radix::Dec => 10,
+            Radix::Oct => 8,
+            Radix::Bin => 2,
+            Radix::Radix(b) => *b,
+        }
+    }
+
+    pub fn as_prefix(&self) -> &str {
+        match self {
+            Radix::Hex => "0x",
+            Radix::Dec => "",
+            Radix::Oct => "0o",
+            Radix::Bin => "0b",
+            Radix::Radix(_) => "",
+        }
+    }
 }
 /// Lexer
 #[derive(Debug)]
@@ -39,7 +65,6 @@ pub struct Lexer<T: Iterator<Item = (u32, char)>> {
 /// * `1` - Start of span.
 /// * `2` - End of span.
 pub type SpannedToken = (Token, u32, u32);
-
 pub type LexResult = Result<SpannedToken, LexError>;
 
 pub fn lexer_from_str(src: &str) -> impl Iterator<Item = LexResult> + '_ {
@@ -105,17 +130,30 @@ where
     fn decide_next(&mut self) -> Result<(), LexError> {
         if let Some(ch) = self.c_char {
             let mut check_sign = false;
+
             if self.is_name_start(ch) {
                 check_sign = true;
                 let name = self.lex_name()?;
                 self.add_to_queue(name)
             } else if self.is_number_start(ch, self.n_char) {
+                check_sign = true;
+                let num = self.lex_number()?;
+                self.add_to_queue(num);
             } else {
                 self.lex_other(ch)?;
             }
+
+            if check_sign {
+                // ensures correct parsing of minus sign
+                if Some('-') == self.c_char && self.is_number_start('-', self.n_char) {
+                    self.eat_single_char(Token::Minus);
+                }
+            }
         } else {
+            // reached EOF
             self.add_to_queue((Token::EOF, self.c_pos, self.c_pos))
         }
+
         Ok(())
     }
 
@@ -125,21 +163,234 @@ where
             '+' => {
                 let start = self.c_pos;
                 let _ = self.next_char();
-                if let Some('=') = self.c_char {
-                    // matches for +=
-                    let _ = self.next_char();
-                    let end = self.c_pos;
-                    self.add_to_queue((Token::PlusEq, start, end));
-                } else {
-                    let end = self.c_pos;
-                    self.add_to_queue((Token::Plus, start, end));
+
+                match self.c_char {
+                    Some('=') => {
+                        let _ = self.next_char();
+                        let end = self.c_pos;
+                        self.add_to_queue((Token::PlusEq, start, end));
+                    }
+                    _ => {
+                        let end = self.c_pos;
+                        self.add_to_queue((Token::Plus, start, end));
+                    }
                 }
             } // +=
-            '-' => {} // -=, ->, -->, -<
-            '*' => {} // **, *=, */
-            '/' => {} // //, ///, /=, /*
-            '%' => {} // %%, %=, %%=
-            '<' => {} // <>, <=, <<, <<=, <-, <:, <--, <~, <->, <|
+            '-' => {
+                let start = self.c_pos;
+                let _ = self.next_char();
+
+                match self.c_char {
+                    Some('=') => {
+                        let _ = self.next_char();
+                        let end = self.c_pos;
+                        self.add_to_queue((Token::MinusEq, start, end));
+                    }
+                    Some('>') => {
+                        let _ = self.next_char();
+                        let end = self.c_pos;
+                        self.add_to_queue((Token::RightArrow, start, end));
+                    }
+                    Some('-') => {
+                        let _ = self.next_char();
+
+                        match self.c_char {
+                            Some('>') => {
+                                let _ = self.next_char();
+                                let end = self.c_pos;
+                                self.add_to_queue((Token::LongRightArrow, start, end));
+                            }
+                            _ => {
+                                let _ = self.next_char();
+                                let end = self.c_pos;
+                                return Err(LexError::new(
+                                    LexErrorType::UnrecognizedToken { tok: ch },
+                                    Span::new(start, end),
+                                ));
+                            }
+                        }
+                    }
+                    Some('<') => {
+                        let _ = self.next_char();
+                        let end = self.c_pos;
+                        self.add_to_queue((Token::InvertedRightArrow, start, end));
+                    }
+                    _ => {
+                        let end = self.c_pos;
+                        self.add_to_queue((Token::Minus, start, end));
+                    }
+                }
+            } // -=, ->, -->, -<
+            '*' => {
+                let start = self.c_pos;
+                let _ = self.next_char();
+
+                match self.c_char {
+                    Some('*') => {
+                        let _ = self.next_char();
+                        let end = self.c_pos;
+                        self.add_to_queue((Token::DoubleStar, start, end));
+                    }
+                    Some('=') => {
+                        let _ = self.next_char();
+                        let end = self.c_pos;
+                        self.add_to_queue((Token::StarEq, start, end));
+                    }
+                    Some('/') => {
+                        let _ = self.next_char();
+                        let end = self.c_pos;
+                        self.add_to_queue((Token::CloseMulti, start, end));
+                    }
+                    _ => {
+                        let end = self.c_pos;
+                        self.add_to_queue((Token::Star, start, end));
+                    }
+                }
+            } // **, *=, */
+            '/' => {
+                let start = self.c_pos;
+                let _ = self.next_char();
+
+                match self.c_char {
+                    Some('/') => {
+                        let _ = self.next_char();
+
+                        match self.c_char {
+                            Some('/') => {
+                                let _ = self.next_char();
+                                let end = self.c_pos;
+                                self.add_to_queue((Token::TripleSlash, start, end));
+                            }
+                            // If mod comments become a thing, uncomment this code.
+                            // Some('!') => {
+                            //     let _ = self.next_char();
+                            //     let end = self.c_pos;
+                            //     self.add_to_queue((Token::ModComment, start, end));
+                            // }
+                            _ => {
+                                let end = self.c_pos;
+                                self.add_to_queue((Token::DoubleSlash, start, end));
+                            }
+                        }
+                    }
+                    Some('=') => {
+                        let _ = self.next_char();
+                        let end = self.c_pos;
+                        self.add_to_queue((Token::SlashEq, start, end));
+                    }
+                    Some('*') => {
+                        let _ = self.next_char();
+                        let end = self.c_pos;
+                        self.add_to_queue((Token::OpenMulti, start, end));
+                    }
+                    _ => {
+                        let end = self.c_pos;
+                        self.add_to_queue((Token::Slash, start, end));
+                    }
+                }
+            } // //, ///, /=, /*
+            '%' => {
+                let start = self.c_pos;
+                let _ = self.next_char();
+
+                match self.c_char {
+                    Some('%') => {
+                        let _ = self.next_char();
+
+                        match self.c_char {
+                            Some('=') => {
+                                let _ = self.next_char();
+                                let end = self.c_pos;
+                                self.add_to_queue((Token::DoublePercentEq, start, end));
+                            }
+                            _ => {
+                                let end = self.c_pos;
+                                self.add_to_queue((Token::DoublePercent, start, end));
+                            }
+                        }
+                    }
+                    Some('=') => {
+                        let _ = self.next_char();
+                        let end = self.c_pos;
+                        self.add_to_queue((Token::StarEq, start, end));
+                    }
+                    _ => {
+                        let end = self.c_pos;
+                        self.add_to_queue((Token::Star, start, end));
+                    }
+                }
+            } // %%, %=, %%=
+            '<' => {
+                let start = self.c_pos;
+                let _ = self.next_char();
+
+                match self.c_char {
+                    Some('>') => {
+                        let _ = self.next_char();
+                        let end = self.c_pos;
+                        self.add_to_queue((Token::LessGreater, start, end));
+                    }
+                    Some('=') => {
+                        let _ = self.next_char();
+                        let end = self.c_pos;
+                        self.add_to_queue((Token::Eq, start, end));
+                    }
+                    Some('<') => {
+                        let _ = self.next_char();
+
+                        match self.c_char {
+                            Some('=') => {
+                                let _ = self.next_char();
+                                let end = self.c_pos;
+                                self.add_to_queue((Token::ShiftLeftEq, start, end));
+                            }
+                            _ => {
+                                let end = self.c_pos;
+                                self.add_to_queue((Token::ShiftLeft, start, end));
+                            }
+                        }
+                    }
+                    Some('-') => {
+                        let _ = self.next_char();
+
+                        match self.c_char {
+                            Some('-') => {
+                                let _ = self.next_char();
+                                let end = self.c_pos;
+                                self.add_to_queue((Token::LongLeftArrow, start, end));
+                            }
+                            Some('>') => {
+                                let _ = self.next_char();
+                                let end = self.c_pos;
+                                self.add_to_queue((Token::BidirectionalArrow, start, end));
+                            }
+                            _ => {
+                                let end = self.c_pos;
+                                self.add_to_queue((Token::LeftArrow, start, end));
+                            }
+                        }
+                    }
+                    Some(':') => {
+                        let _ = self.next_char();
+                        let end = self.c_pos;
+                        self.add_to_queue((Token::LessColon, start, end));
+                    }
+                    Some('~') => {
+                        let _ = self.next_char();
+                        let end = self.c_pos;
+                        self.add_to_queue((Token::CurlyLeftArrow, start, end));
+                    }
+                    Some('|') => {
+                        let _ = self.next_char();
+                        let end = self.c_pos;
+                        self.add_to_queue((Token::LeftPipe, start, end));
+                    }
+                    _ => {
+                        let end = self.c_pos;
+                        self.add_to_queue((Token::Less, start, end));
+                    }
+                }
+            } // <>, <=, <<, <<=, <-, <:, <--, <~, <->, <|
             '>' => {
                 let start = self.c_pos;
                 let _ = self.next_char();
@@ -151,7 +402,21 @@ where
                         let end = self.c_pos;
                         self.add_to_queue((Token::GreaterEq, start, end));
                     }
-                    Some('>') => { // matches for >> and >>=
+                    Some('>') => {
+                        // matches for >> and >>=
+                        let _ = self.next_char();
+
+                        match self.c_char {
+                            Some('=') => {
+                                let _ = self.next_char();
+                                let end = self.c_pos;
+                                self.add_to_queue((Token::ShiftRightEq, start, end));
+                            }
+                            _ => {
+                                let end = self.c_pos;
+                                self.add_to_queue((Token::ShiftRight, start, end));
+                            }
+                        }
                     }
                     Some('-') => {
                         // matches for >-
@@ -169,14 +434,16 @@ where
                 let start = self.c_pos;
                 let _ = self.next_char();
 
-                if let Some('=') = self.c_char {
-                    // matches for &=
-                    let _ = self.next_char();
-                    let end = self.c_pos;
-                    self.add_to_queue((Token::AmpEq, start, end));
-                } else {
-                    let end = self.c_pos;
-                    self.add_to_queue((Token::Amp, start, end));
+                match self.c_char {
+                    Some('=') => {
+                        let _ = self.next_char();
+                        let end = self.c_pos;
+                        self.add_to_queue((Token::AmpEq, start, end))
+                    }
+                    _ => {
+                        let end = self.c_pos;
+                        self.add_to_queue((Token::Amp, start, end));
+                    }
                 }
             }
             '|' => {
@@ -220,7 +487,67 @@ where
                     }
                 }
             }
-            '=' => {} // ==, ===, =.=, =.., =>
+            '=' => {
+                let start = self.c_pos;
+                let _ = self.next_char();
+
+                match self.c_char {
+                    Some('=') => {
+                        let _ = self.next_char();
+
+                        match self.c_char {
+                            Some('=') => {
+                                let _ = self.next_char();
+                                let end = self.c_pos;
+                                self.add_to_queue((Token::Identity, start, end));
+                            }
+                            _ => {
+                                let end = self.c_pos;
+                                self.add_to_queue((Token::Equality, start, end));
+                            }
+                        }
+                    }
+                    Some('.') => {
+                        let _ = self.next_char();
+
+                        match self.c_char {
+                            Some('=') => {
+                                // matches for =.=
+                                let _ = self.next_char();
+                                let end = self.c_pos;
+                                self.add_to_queue((Token::IncRange, start, end));
+                            }
+                            Some('.') => {
+                                // matches for =..
+                                let _ = self.next_char();
+                                let end = self.c_pos;
+                                self.add_to_queue((Token::LeftRange, start, end))
+                            }
+                            _ => {
+                                // matches for =.
+                                let end = self.c_pos;
+                                return Err(LexError::new(
+                                    LexErrorType::UnrecognizedToken { tok: ch },
+                                    Span::new(start, end),
+                                ));
+                            }
+                        }
+                    }
+                    Some('>') => {
+                        // matches for =>
+                        let _ = self.next_char();
+                        let end = self.c_pos;
+                        return Err(LexError::new(
+                            LexErrorType::DisallowedToken { tok: ch },
+                            Span::new(start, end),
+                        ));
+                    }
+                    _ => {
+                        let end = self.c_pos;
+                        self.add_to_queue((Token::Eq, start, end));
+                    }
+                }
+            } // ==, ===, =.=, =.., =>
             ',' => self.eat_single_char(Token::Comma),
             '.' => {
                 let start = self.c_pos;
@@ -286,14 +613,16 @@ where
                 let start = self.c_pos;
                 let _ = self.next_char();
 
-                if let Some('=') = self.c_char {
-                    // matches for !=
-                    let _ = self.next_char();
-                    let end = self.c_pos;
-                    self.add_to_queue((Token::Inequality, start, end));
-                } else {
-                    let end = self.c_pos;
-                    self.add_to_queue((Token::Exclam, start, end));
+                match self.c_char {
+                    Some('=') => {
+                        let _ = self.next_char();
+                        let end = self.c_pos;
+                        self.add_to_queue((Token::Inequality, start, end));
+                    }
+                    _ => {
+                        let end = self.c_pos;
+                        self.add_to_queue((Token::Exclam, start, end));
+                    }
                 }
             }
             '?' => self.eat_single_char(Token::Question),
@@ -302,13 +631,17 @@ where
             '~' => {
                 let start = self.c_pos;
                 let _ = self.next_char();
-                if let Some('>') = self.c_char {
-                    let _ = self.next_char();
-                    let end = self.c_pos;
-                    self.add_to_queue((Token::CurlyRightArrow, start, end));
-                } else {
-                    let end = self.c_pos;
-                    self.add_to_queue((Token::Tilde, start, end));
+
+                match self.c_char {
+                    Some('>') => {
+                        let _ = self.next_char();
+                        let end = self.c_pos;
+                        self.add_to_queue((Token::CurlyRightArrow, start, end));
+                    }
+                    _ => {
+                        let end = self.c_pos;
+                        self.add_to_queue((Token::Tilde, start, end));
+                    }
                 }
             } // ~>
             '{' => self.eat_single_char(Token::LeftBrace),
@@ -331,6 +664,193 @@ where
 
     fn lex_name(&mut self) -> LexResult {
         todo!()
+    }
+
+    fn lex_number(&mut self) -> LexResult {
+        let start = self.c_pos;
+        let number = if self.c_char == Some('0') {
+            match self.n_char {
+                Some('x') | Some('X') => {
+                    let _ = self.next_char();
+                    let _ = self.next_char();
+                    self.lex_radix(start, Radix::Hex)?
+                }
+                Some('o') | Some('O') => {
+                    let _ = self.next_char();
+                    let _ = self.next_char();
+                    self.lex_radix(start, Radix::Oct)?
+                }
+                Some('b') | Some('B') => {
+                    let _ = self.next_char();
+                    let _ = self.next_char();
+                    self.lex_radix(start, Radix::Bin)?
+                }
+                _ => self.lex_potential_float(),
+            }
+        } else {
+            self.lex_potential_float()
+        };
+
+        if Some('_') == self.c_char {
+            Err(LexError::new(
+                LexErrorType::TrailingUnderscore,
+                Span::new(self.c_pos, self.c_pos),
+            ))
+        } else {
+            Ok(number)
+        }
+    }
+
+    /// Function to lex strings
+    fn lex_string(&mut self) -> LexResult {
+        todo!()
+    }
+
+    /// Function to lex comments
+    fn lex_comment(&mut self) -> SpannedToken {
+        todo!()
+    }
+
+    /// Function to lex base-10 numbers (Int and Float)
+    fn lex_potential_float(&mut self) -> SpannedToken {
+        self.lex_any_radix(true)
+    }
+
+    /// Lexes only integral values in base 10
+    fn lex_integer(&mut self) -> SpannedToken {
+        self.lex_any_radix(false)
+    }
+
+    /// Can lex both float and integral values
+    fn lex_any_radix(&mut self, can_be_float: bool) -> SpannedToken {
+        let start = self.c_pos;
+        let mut value = String::new();
+
+        // Consumes minus
+        if self.c_char == Some('-') {
+            value.push(self.next_char().expect("lex_normal negative"))
+        }
+
+        // Consumes all digits that could occur after a decimal point
+        value.push_str(&self.filter_underscores(Radix::Dec));
+
+        // Floats
+        if can_be_float && self.c_char == Some('.') {
+            value.push(self.next_char().expect("lex_normal float"));
+            value.push_str(&self.filter_underscores(Radix::Dec));
+
+            // Scientific
+            if self.c_char == Some('e') || self.c_char == Some('E') {
+                // allows both cases of e but regularize to just lowercase
+                self.c_char = Some('e');
+                value.push(self.next_char().expect("lex_normal scientific"));
+                if self.c_char == Some('-') {
+                    value.push(self.next_char().expect("lex_normal scientific negative"))
+                } else if self.c_char == Some('+') {
+                    // skip over +, allowing you to have syntax like 1E+10 AND 1E10, rather than just 1E10 and 1E-10
+                    let _ = self.next_char();
+                }
+            }
+            let end = self.c_pos;
+
+            // SpannedToken
+            (
+                Token::Float {
+                    value: value.into(),
+                },
+                start,
+                end,
+            )
+        } else {
+            // occurs when cannot be float or no decimal point is used
+            let end = self.c_pos;
+
+            (
+                Token::Int {
+                    value: value.into(),
+                },
+                start,
+                end,
+            )
+        }
+    }
+
+    /// Lexes an integral value of any valid radix
+    fn lex_radix(&mut self, start: u32, radix: Radix) -> LexResult {
+        let number = self.filter_underscores(radix);
+
+        if number.is_empty() {
+            let loc = self.c_pos - 1;
+            Err(LexError::new(LexErrorType::NoIntValue, Span::new(loc, loc)))
+        } else if radix.as_num() < 16 && Lexer::<T>::is_valid_digit(self.c_char, radix) {
+            let loc = self.c_pos;
+            Err(LexError::new(
+                LexErrorType::OutOfRadixBounds,
+                Span::new(loc, loc),
+            ))
+        } else {
+            let value = format!("{}{}", radix.as_prefix(), number);
+            let end = self.c_pos;
+            Ok((
+                Token::Int {
+                    value: value.into(),
+                },
+                start,
+                end,
+            ))
+        }
+    }
+
+    /// Lex dot access for tuples
+    fn lex_dot_access(&mut self) {
+        loop {
+            if Some('.') == self.c_char && matches!(self.n_char, Some('0'..='9')) {
+                self.eat_single_char(Token::Dot);
+                let number = self.lex_integer();
+                self.add_to_queue(number);
+            } else {
+                break;
+            }
+        }
+    }
+
+    /// Consumes a sequence of numbers within the given radix and removes underscores
+    fn filter_underscores(&mut self, radix: Radix) -> String {
+        let mut value = String::new();
+
+        loop {
+            if let Some(c) = self.consume_number(radix) {
+                value.push(c);
+            } else if self.c_char == Some('_') && Lexer::<T>::is_valid_digit(self.n_char, radix) {
+                value.push('_');
+                let _ = self.next_char();
+            } else {
+                break;
+            }
+        }
+
+        value
+    }
+
+    /// Consumes a digit within the given `radix`
+    fn consume_number(&mut self, radix: Radix) -> Option<char> {
+        let consume_char = Lexer::<T>::is_valid_digit(self.c_char, radix);
+
+        if consume_char {
+            Some(self.next_char().expect("consume_number next char"))
+        } else {
+            None
+        }
+    }
+
+    /// Determines if a given digit is a valid digit within the given `radix`
+    fn is_valid_digit(ch: Option<char>, radix: Radix) -> bool {
+        match radix {
+            Radix::Bin | Radix::Oct | Radix::Dec | Radix::Hex => {
+                ch.filter(|c| c.is_digit(radix.as_num())).is_some()
+            }
+            other => panic!("The radix {} is not implemented", other.as_num()),
+        }
     }
 
     /// Tests a `char` to see if it is a valid start to an identifier or reserved keyword
@@ -450,7 +970,7 @@ pub fn str_to_keyword(word: &str) -> Option<Token> {
         "dyn" => Some(Token::Dynamic),
         "enum" => Some(Token::Enum),
         "except" => Some(Token::Except),
-        "function" => Some(Token::Function),
+        "fun" => Some(Token::Function),
         "impl" => Some(Token::Impl),
         "import" => Some(Token::Import),
         "let" => Some(Token::Let),
