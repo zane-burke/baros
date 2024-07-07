@@ -1,7 +1,7 @@
 //! The lexer for Baros
 //! Needs to be extended to include support for various type suffixes (e.g. 100u8, -12i64, etc.)
 //! Current Radix enum may not be ideal for handling errors when unsupported radices are used.
-use crate::lex::error::{LexError, LexErrorType, Span};
+use crate::lex::error::{LexError, LexErrorType, Span, UnicodeEscapeError};
 use crate::lex::token::Token;
 
 /// Stores variants for the allowed radices in the language
@@ -261,12 +261,11 @@ where
                                 let end = self.c_pos;
                                 self.add_to_queue((Token::TripleSlash, start, end));
                             }
-                            // If mod comments become a thing, uncomment this code.
-                            // Some('!') => {
-                            //     let _ = self.next_char();
-                            //     let end = self.c_pos;
-                            //     self.add_to_queue((Token::ModComment, start, end));
-                            // }
+                            Some('!') => {
+                                let _ = self.next_char();
+                                let end = self.c_pos;
+                                self.add_to_queue((Token::DoubleSlashExclam, start, end));
+                            }
                             _ => {
                                 let end = self.c_pos;
                                 self.add_to_queue((Token::DoubleSlash, start, end));
@@ -663,7 +662,22 @@ where
     }
 
     fn lex_name(&mut self) -> LexResult {
-        todo!()
+        let mut name = String::new();
+        let start = self.c_pos;
+
+        while self.is_name_continuation() {
+            name.push(self.next_char().expect("lex_name continue"));
+        }
+
+        let end = self.c_pos;
+
+        if let Some(tok) = str_to_keyword(&name) {
+            Ok((tok, start, end))
+        } else if name.starts_with('_') {
+            Ok((Token::UnusedIdentifier { name: name.into() }, start, end))
+        } else {
+            Ok((Token::Identifier { name: name.into() }, start, end))
+        }
     }
 
     fn lex_number(&mut self) -> LexResult {
@@ -703,11 +717,134 @@ where
 
     /// Function to lex strings
     fn lex_string(&mut self) -> LexResult {
-        todo!()
+        let start = self.c_pos;
+        let _ = self.next_char();
+        let mut content = String::new();
+        loop {
+            match self.next_char() {
+                Some('\\') => {
+                    let slash_pos = self.c_pos - 1;
+                    if let Some(ch) = self.c_char {
+                        match ch {
+                            // slash escapes
+                            'f' | 'n' | 'r' | 't' | '"' | '\\' => {
+                                let _ = self.next_char();
+                                content.push('\\');
+                                content.push(ch);
+                            }
+                            // unicode escape
+                            'u' => {
+                                let _ = self.next_char();
+
+                                if self.c_char != Some('{') {
+                                    return Err(LexError::new(
+                                        LexErrorType::UnicodeEscape(
+                                            UnicodeEscapeError::MissingLeftBrace,
+                                        ),
+                                        Span::new(self.c_pos - 1, self.c_pos),
+                                    ));
+                                }
+
+                                // storage for hex digits
+                                let mut digits = String::new();
+
+                                loop {
+                                    let _ = self.next_char();
+
+                                    let Some(ch) = self.c_char else {
+                                        break;
+                                    };
+
+                                    if ch == '}' {
+                                        break;
+                                    }
+
+                                    digits.push(ch);
+
+                                    if !ch.is_ascii_hexdigit() {
+                                        return Err(LexError::new(
+                                            LexErrorType::UnicodeEscape(
+                                                UnicodeEscapeError::ExpectedDigit,
+                                            ),
+                                            Span::new(self.c_pos, self.c_pos + 1),
+                                        ));
+                                    }
+                                }
+
+                                if self.c_char != Some('}') {
+                                    return Err(LexError::new(
+                                        LexErrorType::UnicodeEscape(
+                                            UnicodeEscapeError::ExpectedRightBrace,
+                                        ),
+                                        Span::new(self.c_pos - 1, self.c_pos),
+                                    ));
+                                }
+
+                                let _ = self.next_char();
+
+                                // check that digits contains between 1 and six digits
+                                if !(1..=6).contains(&digits.len()) {
+                                    return Err(LexError::new(
+                                        LexErrorType::UnicodeEscape(
+                                            UnicodeEscapeError::NumberOfDigits,
+                                        ),
+                                        Span::new(slash_pos, self.c_pos),
+                                    ));
+                                }
+
+                                // convert digits to a char
+                                if char::from_u32(
+                                    u32::from_str_radix(&digits, 16).expect(
+                                        "Failed to parse unicode codepoint in escape sequence",
+                                    ),
+                                )
+                                .is_none()
+                                {
+                                    return Err(LexError::new(
+                                        LexErrorType::UnicodeEscape(UnicodeEscapeError::Codepoint),
+                                        Span::new(slash_pos, self.c_pos),
+                                    ));
+                                }
+                            }
+                            _ => {
+                                return Err(LexError::new(
+                                    LexErrorType::StringEscape,
+                                    Span::new(slash_pos, slash_pos + 1),
+                                ));
+                            }
+                        }
+                    }
+                }
+                Some('"') => break,
+                Some(ch) => content.push(ch),
+                None => {
+                    return Err(LexError::new(
+                        LexErrorType::UnterminatedString,
+                        Span::new(start, start),
+                    ));
+                }
+            }
+        }
+
+        let end = self.c_pos;
+
+        let tok = Token::Str {
+            value: content.into(),
+        };
+
+        Ok((tok, start, end))
     }
 
     /// Function to lex comments
+    /// Will need to be expanded to also support multi-line comments (/* */)
     fn lex_comment(&mut self) -> SpannedToken {
+        enum Kind {
+            Comment,
+            DocComment,
+            MultiComment,
+            ModComment,
+        }
+
         todo!()
     }
 
@@ -974,6 +1111,7 @@ pub fn str_to_keyword(word: &str) -> Option<Token> {
         "impl" => Some(Token::Impl),
         "import" => Some(Token::Import),
         "let" => Some(Token::Let),
+        "mod" => Some(Token::Mod),
         "mut" => Some(Token::Mut),
         "pub" => Some(Token::Pub),
         "return" => Some(Token::Return),
