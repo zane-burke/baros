@@ -10,7 +10,9 @@ pub enum Token {
     Undefined,
 
     Identifier { name: EcoString },
-    Comment,
+    UnusedIdentifier { name: EcoString },
+    SingleComment,
+    MultiComment { value: String },
     DocComment { value: String },
     ModComment { value: String },
 
@@ -35,6 +37,7 @@ pub enum Token {
     Impl,     // impl
     Import,   // import
     Let,      // let
+    Mod,      // mod
     Mut,      // mut
     Pub,      // pub
     Return,   // return
@@ -172,6 +175,7 @@ impl Token {
             | Token::Impl
             | Token::Import
             | Token::Let
+            | Token::Mod
             | Token::Mut
             | Token::Pub
             | Token::Return
@@ -211,7 +215,9 @@ impl std::fmt::Display for Token {
             Token::Newline => "NEWLINE",
             Token::Undefined => "UNDEFINED",
             Token::Identifier { name } => name.as_str(),
-            Token::Comment => "//",
+            Token::UnusedIdentifier { name } => name.as_str(),
+            Token::SingleComment => "//",
+            Token::MultiComment { .. } => "/* ... */",
             Token::DocComment { .. } => "///",
             Token::ModComment { .. } => "//!",
             Token::Int { value }
@@ -232,6 +238,7 @@ impl std::fmt::Display for Token {
             Token::Impl => "impl",
             Token::Import => "import",
             Token::Let => "let",
+            Token::Mod => "mod",
             Token::Mut => "mut",
             Token::Pub => "pub",
             Token::Return => "return",
