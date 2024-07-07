@@ -30,12 +30,22 @@ impl Span {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum LexErrorType {
-    BadEscape,
-    TrailingUnderscore,
+    StringEscape, // unescaped slash
+    TrailingUnderscore, // 
     OutOfRadixBounds,
     NoIntValue,
+    UnicodeEscape(UnicodeEscapeError),
     UnterminatedString,
     UnrecognizedToken { tok: char },
     DisallowedToken { tok: char },
     BadIdentifier { name: EcoString },
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum UnicodeEscapeError {
+    MissingLeftBrace,
+    ExpectedDigit,
+    ExpectedRightBrace,
+    NumberOfDigits,
+    Codepoint,
 }
