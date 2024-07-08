@@ -1,8 +1,9 @@
 //! The lexer for Baros
 //! Needs to be extended to include support for various type suffixes (e.g. 100u8, -12i64, etc.)
 //! Current Radix enum may not be ideal for handling errors when unsupported radices are used.
-use crate::lex::error::{LexError, LexErrorType, Span, UnicodeEscapeError};
-use crate::lex::token::Token;
+use super::error::{LexError, LexErrorType, UnicodeEscapeError};
+use super::token::Token;
+use crate::util::Span;
 
 /// Stores variants for the allowed radices in the language
 #[derive(Debug, Clone, Copy)]

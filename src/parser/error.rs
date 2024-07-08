@@ -1,5 +1,6 @@
 //! Defines errors used by the lexer
 use ecow::EcoString;
+use crate::util::Span;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LexError {
@@ -13,18 +14,6 @@ impl LexError {
             error: err_type,
             location,
         }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Default, Clone, Copy)]
-pub struct Span {
-    start: u32,
-    end: u32,
-}
-
-impl Span {
-    pub fn new(start: u32, end: u32) -> Self {
-        Span { start, end }
     }
 }
 
