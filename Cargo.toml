@@ -5,3 +5,4 @@ edition = "2021"
 
 [dependencies]
 ecow = "0.2.2"
+vec1 = "1.12.1"
