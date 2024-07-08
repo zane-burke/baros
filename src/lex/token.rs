@@ -11,7 +11,7 @@ pub enum Token {
 
     Identifier { name: EcoString },
     UnusedIdentifier { name: EcoString },
-    SingleComment,
+    SingleComment { value: String },
     MultiComment { value: String },
     DocComment { value: String },
     ModComment { value: String },
@@ -216,7 +216,7 @@ impl std::fmt::Display for Token {
             Token::Undefined => "UNDEFINED",
             Token::Identifier { name } => name.as_str(),
             Token::UnusedIdentifier { name } => name.as_str(),
-            Token::SingleComment => "//",
+            Token::SingleComment { .. } => "//",
             Token::MultiComment { .. } => "/* ... */",
             Token::DocComment { .. } => "///",
             Token::ModComment { .. } => "//!",
