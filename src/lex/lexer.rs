@@ -67,6 +67,7 @@ pub struct Lexer<T: Iterator<Item = (u32, char)>> {
 pub type SpannedToken = (Token, u32, u32);
 pub type LexResult = Result<SpannedToken, LexError>;
 
+/// Create a lexer from an inputted string
 pub fn lexer_from_str(src: &str) -> impl Iterator<Item = LexResult> + '_ {
     let charbuf = src.char_indices().map(|(i, ch)| (i as u32, ch));
     let handler = NewlineHandler::new(charbuf);
@@ -118,9 +119,10 @@ where
     }
 
     /// Retrieves the next token
+    /// Main entry
     pub fn next_token(&mut self) -> LexResult {
         while self.queue.is_empty() {
-            todo!();
+            self.decide_next()?;
         }
 
         Ok(self.queue.remove(0))
@@ -134,7 +136,8 @@ where
             if self.is_name_start(ch) {
                 check_sign = true;
                 let name = self.lex_name()?;
-                self.add_to_queue(name)
+                self.add_to_queue(name);
+                self.lex_dot_access();
             } else if self.is_number_start(ch, self.n_char) {
                 check_sign = true;
                 let num = self.lex_number()?;
@@ -160,6 +163,10 @@ where
     /// Lexes operators, delimiters, and ranges
     fn lex_other(&mut self, ch: char) -> Result<(), LexError> {
         match ch {
+            '"' => {
+                let string = self.lex_string()?;
+                self.add_to_queue(string);
+            }
             '+' => {
                 let start = self.c_pos;
                 let _ = self.next_char();
@@ -221,6 +228,8 @@ where
                     }
                 }
             } // -=, ->, -->, -<
+            // the case where c_char = '*' and n_char '/' is not lexed,
+            // as any valid uses of that sequence are consumed by lex_comment
             '*' => {
                 let start = self.c_pos;
                 let _ = self.next_char();
@@ -236,11 +245,6 @@ where
                         let end = self.c_pos;
                         self.add_to_queue((Token::StarEq, start, end));
                     }
-                    Some('/') => {
-                        let _ = self.next_char();
-                        let end = self.c_pos;
-                        self.add_to_queue((Token::CloseMulti, start, end));
-                    }
                     _ => {
                         let end = self.c_pos;
                         self.add_to_queue((Token::Star, start, end));
@@ -253,24 +257,9 @@ where
 
                 match self.c_char {
                     Some('/') => {
-                        let _ = self.next_char();
-
-                        match self.c_char {
-                            Some('/') => {
-                                let _ = self.next_char();
-                                let end = self.c_pos;
-                                self.add_to_queue((Token::TripleSlash, start, end));
-                            }
-                            Some('!') => {
-                                let _ = self.next_char();
-                                let end = self.c_pos;
-                                self.add_to_queue((Token::DoubleSlashExclam, start, end));
-                            }
-                            _ => {
-                                let end = self.c_pos;
-                                self.add_to_queue((Token::DoubleSlash, start, end));
-                            }
-                        }
+                        // handles //, ///, and //!
+                        let comment = self.lex_comment();
+                        self.add_to_queue(comment);
                     }
                     Some('=') => {
                         let _ = self.next_char();
@@ -278,9 +267,9 @@ where
                         self.add_to_queue((Token::SlashEq, start, end));
                     }
                     Some('*') => {
-                        let _ = self.next_char();
-                        let end = self.c_pos;
-                        self.add_to_queue((Token::OpenMulti, start, end));
+                        // handles /* AND */
+                        let comment = self.lex_comment();
+                        self.add_to_queue(comment);
                     }
                     _ => {
                         let end = self.c_pos;
@@ -661,6 +650,7 @@ where
         Ok(())
     }
 
+    /// Lex identifiers of types, functions, variables, etc.
     fn lex_name(&mut self) -> LexResult {
         let mut name = String::new();
         let start = self.c_pos;
@@ -680,6 +670,7 @@ where
         }
     }
 
+    /// Function to lex number literals
     fn lex_number(&mut self) -> LexResult {
         let start = self.c_pos;
         let number = if self.c_char == Some('0') {
@@ -699,10 +690,10 @@ where
                     let _ = self.next_char();
                     self.lex_radix(start, Radix::Bin)?
                 }
-                _ => self.lex_potential_float(),
+                _ => self.lex_any_radix(true),
             }
         } else {
-            self.lex_potential_float()
+            self.lex_any_radix(true)
         };
 
         if Some('_') == self.c_char {
@@ -836,26 +827,88 @@ where
     }
 
     /// Function to lex comments
-    /// Will need to be expanded to also support multi-line comments (/* */)
+    /// Should be able to handle //, ///, //!, and /* */
+    /// Entered after 1 slash to accomodate for /* */
     fn lex_comment(&mut self) -> SpannedToken {
         enum Kind {
             Comment,
             DocComment,
             MultiComment,
             ModComment,
+            BadCommentError,
         }
 
-        todo!()
-    }
+        let kind = match (self.c_char, self.n_char) {
+            (Some('/'), Some('!')) => {
+                // mod comment is //!
+                let _ = self.next_char();
+                let _ = self.next_char();
+                Kind::ModComment
+            }
+            (Some('/'), Some('/')) => {
+                // doc comment is ///
+                let _ = self.next_char();
+                let _ = self.next_char();
+                Kind::DocComment
+            }
+            (Some('/'), _) => {
+                let _ = self.next_char();
+                Kind::Comment
+            }
+            (Some('*'), _) => {
+                let _ = self.next_char();
+                Kind::MultiComment
+            }
+            // This SHOULD be unreachable
+            _ => Kind::BadCommentError,
+        };
 
-    /// Function to lex base-10 numbers (Int and Float)
-    fn lex_potential_float(&mut self) -> SpannedToken {
-        self.lex_any_radix(true)
-    }
+        let mut comment = String::new();
+        let start = self.c_pos;
 
-    /// Lexes only integral values in base 10
-    fn lex_integer(&mut self) -> SpannedToken {
-        self.lex_any_radix(false)
+        match kind {
+            Kind::MultiComment => {
+                loop {
+                    if (Some('*'), Some('/')) == (self.c_char, self.n_char) {
+                        // eats the */ and breaks from the loop
+                        let _ = self.next_char();
+                        let _ = self.next_char();
+                        break;
+                    } else if Some('\0') == self.c_char {
+                        // should prevent bad things from happening if comment is not closed
+                        break;
+                    }
+
+                    // consumes the current character and pushes it to `comment`
+                    match self.c_char {
+                        Some(c) => comment.push(c),
+                        None => break,
+                    }
+                    let _ = self.next_char();
+                }
+            }
+            Kind::BadCommentError => {}
+            _ => {
+                while Some('\n') != self.c_char {
+                    match self.c_char {
+                        Some(c) => comment.push(c),
+                        None => break,
+                    }
+                    let _ = self.next_char();
+                }
+            }
+        }
+
+        let end = self.c_pos;
+        let tok = match kind {
+            Kind::Comment => Token::SingleComment { value: comment },
+            Kind::MultiComment => Token::MultiComment { value: comment },
+            Kind::DocComment => Token::DocComment { value: comment },
+            Kind::ModComment => Token::ModComment { value: comment },
+            Kind::BadCommentError => Token::Undefined,
+        };
+
+        (tok, start, end)
     }
 
     /// Can lex both float and integral values
@@ -943,7 +996,7 @@ where
         loop {
             if Some('.') == self.c_char && matches!(self.n_char, Some('0'..='9')) {
                 self.eat_single_char(Token::Dot);
-                let number = self.lex_integer();
+                let number = self.lex_any_radix(false);
                 self.add_to_queue(number);
             } else {
                 break;
@@ -1030,7 +1083,7 @@ where
     T: Iterator<Item = (u32, char)>,
 {
     type Item = LexResult;
-
+    /// advances the lexer to the next token
     fn next(&mut self) -> Option<Self::Item> {
         let tok = self.next_token();
 
