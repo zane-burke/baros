@@ -1,4 +1,4 @@
-//! Defines Tokens
+//! Defines Tokens for Baros
 use ecow::EcoString;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -75,10 +75,7 @@ pub enum Token {
     Slash,             // /
     Percent,           // %
     DoubleStar,        // **
-    DoubleSlash,       // //
     DoublePercent,     // %%
-    TripleSlash,       // ///
-    DoubleSlashExclam, // //!
     LessGreater,       // <>
 
     // Logical Operators
@@ -270,10 +267,7 @@ impl std::fmt::Display for Token {
             Token::Slash => "/",
             Token::Percent => "%",
             Token::DoubleStar => "**",
-            Token::DoubleSlash => "//",
             Token::DoublePercent => "%%",
-            Token::TripleSlash => "///",
-            Token::DoubleSlashExclam => "//!",
             Token::LessGreater => "<>",
             Token::Equality => "==",
             Token::Inequality => "!=",
