@@ -1,5 +1,4 @@
 //! Defines Tokens
-
 use ecow::EcoString;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
