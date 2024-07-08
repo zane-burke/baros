@@ -4,7 +4,7 @@ use ecow::EcoString;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Token {
     // Control Sequences
-    EOF, // End of file
+    Eof, // End of file
     Newline,
     Undefined,
 
@@ -210,7 +210,7 @@ impl Token {
 impl std::fmt::Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
-            Token::EOF => "EOF",
+            Token::Eof => "EOF",
             Token::Newline => "NEWLINE",
             Token::Undefined => "UNDEFINED",
             Token::Identifier { name } => name.as_str(),

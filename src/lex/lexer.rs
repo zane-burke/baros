@@ -154,7 +154,7 @@ where
             }
         } else {
             // reached EOF
-            self.add_to_queue((Token::EOF, self.c_pos, self.c_pos))
+            self.add_to_queue((Token::Eof, self.c_pos, self.c_pos))
         }
 
         Ok(())
@@ -1088,7 +1088,7 @@ where
         let tok = self.next_token();
 
         match tok {
-            Ok((Token::EOF, _, _)) => None, // end of file and stop
+            Ok((Token::Eof, _, _)) => None, // end of file and stop
             c => Some(c),
         }
     }
